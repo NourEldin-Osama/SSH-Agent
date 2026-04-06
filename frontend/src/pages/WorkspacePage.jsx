@@ -38,6 +38,7 @@ export function Workspace() {
     createSession,
     setActiveSession,
     updateSessionTitle,
+    deleteSession,
     endSession,
   } = useSessionStore()
   const { commands, fetchCommands, addCommand, updateCommand } = useCommandStore()
@@ -270,7 +271,8 @@ export function Workspace() {
           activeSession={activeSession}
           onSelectSession={loadSession}
           onRenameSession={updateSessionTitle}
-          readOnly={readOnly}
+          onCreateSession={startNewSession}
+          onDeleteSession={deleteSession}
           open={sidebarOpen}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
         />

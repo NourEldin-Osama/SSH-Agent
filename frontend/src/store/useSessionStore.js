@@ -39,4 +39,16 @@ export const useSessionStore = create((set) => ({
       sessions: state.sessions.map((s) => (s.id === id ? data : s)),
     }))
   },
+  deleteSession: async (id) => {
+    await sessions.remove(id)
+    set((state) => {
+      const nextSessions = state.sessions.filter((s) => s.id !== id)
+      const activeDeleted = state.activeSession?.id === id
+      return {
+        sessions: nextSessions,
+        activeSession: activeDeleted ? (nextSessions[0] || null) : state.activeSession,
+        readOnly: activeDeleted ? Boolean(nextSessions[0]?.ended_at) : state.readOnly,
+      }
+    })
+  },
 }))
