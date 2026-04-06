@@ -31,7 +31,7 @@ export function ServerCard({ server, onEdit, onDelete }) {
           'bg-gray-800 text-gray-500'
         }`}>
           {status === 'reachable' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-          {status === 'reachable' ? 'Online' : status === 'unreachable' ? 'Offline' : '...'}
+          {status === 'reachable' ? 'Reachable' : status === 'unreachable' ? 'Offline' : '...'}
         </div>
       </div>
       <div className="flex flex-wrap gap-1 mb-4">
@@ -39,8 +39,11 @@ export function ServerCard({ server, onEdit, onDelete }) {
           <span key={tag} className="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded text-xs">{tag}</span>
         ))}
       </div>
+      {status === 'reachable' && (
+        <p className="text-xs text-cyan-400 mb-3">Host/port reachable. SSH auth is validated when first command runs.</p>
+      )}
       {status === 'unreachable' && (
-        <p className="text-xs text-amber-400 mb-3">Server unreachable — check your connection</p>
+        <p className="text-xs text-amber-400 mb-3">Server unreachable — check network, host, or port</p>
       )}
       <div className="flex items-center gap-2">
         <Link

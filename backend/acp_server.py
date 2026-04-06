@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from acp import (
     Agent,
@@ -187,7 +187,13 @@ class ACPServerRuntime:
         session_id: int,
         server_id: int,
         content: str,
+        progress_cb: Callable[[str, dict[str, Any] | None], Awaitable[None]]
+        | None = None,
     ) -> str:
+        async def emit(stage: str, details: dict[str, Any] | None = None) -> None:
+            if progress_cb is not None:
+                await progress_cb(stage, details)
+
         db = SessionLocal()
         try:
             from models import AgentConfig  # local import to avoid cycles
@@ -201,17 +207,27 @@ class ACPServerRuntime:
             if active_agent is None:
                 return "No active agent configured."
 
+            await emit("thinking", {"message": "Reading server context"})
+
             server_info = await self._tooling.invoke(
                 tool_name="get_current_server_info",
                 session_id=session_id,
                 server_id=server_id,
                 arguments={},
             )
+            await emit(
+                "tool_call", {"tool": "get_current_server_info", "result": server_info}
+            )
+
+            await emit("thinking", {"message": "Reading server memory"})
             memory_info = await self._tooling.invoke(
                 tool_name="read_server_memory",
                 session_id=session_id,
                 server_id=server_id,
                 arguments={},
+            )
+            await emit(
+                "tool_call", {"tool": "read_server_memory", "result": memory_info}
             )
 
             if active_agent.base_url and _truthy(
@@ -219,6 +235,15 @@ class ACPServerRuntime:
             ):
                 try:
                     import httpx
+
+                    await emit(
+                        "thinking",
+                        {
+                            "message": "Calling model provider",
+                            "provider": active_agent.base_url,
+                            "model": os.getenv("ACP_MODEL_NAME", "gpt-4o-mini"),
+                        },
+                    )
 
                     api_key = decrypt_value(active_agent.encrypted_api_key)
                     payload = {
@@ -262,13 +287,27 @@ class ACPServerRuntime:
                             msg = choices[0].get("message") or {}
                             text = msg.get("content")
                             if text:
+                                await emit(
+                                    "completed", {"message": "Model response received"}
+                                )
                                 return text
+                    body_text = resp.text[:1000]
+                    await emit(
+                        "error",
+                        {
+                            "message": "Provider returned error response",
+                            "status_code": resp.status_code,
+                            "body": body_text,
+                        },
+                    )
                 except Exception as exc:
                     logger.warning(
                         "Real model path failed; using local ACP tool synthesis: %s",
                         exc,
                     )
+                    await emit("error", {"message": str(exc)})
 
+            await emit("completed", {"message": "Using fallback response path"})
             return (
                 f"[{active_agent.agent_name}] Received: {content}\n"
                 f"Server context: {server_info}\n"
@@ -352,8 +391,15 @@ class ACPServerRuntime:
         session_id: int,
         server_id: int,
         content: str,
+        progress_cb: Callable[[str, dict[str, Any] | None], Awaitable[None]]
+        | None = None,
     ) -> str:
-        return await self._agent_generate_response(session_id, server_id, content)
+        return await self._agent_generate_response(
+            session_id,
+            server_id,
+            content,
+            progress_cb=progress_cb,
+        )
 
 
 def tool_result_to_text(result: dict[str, Any]) -> str:

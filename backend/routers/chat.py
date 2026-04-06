@@ -53,10 +53,23 @@ async def _invoke_agent_runtime(
     runtime = getattr(request.app.state, "acp_runtime", None)
     if runtime is None:
         return _build_fallback_response(content)
+
+    async def progress(stage: str, details: dict | None):
+        await broadcast_to_session(
+            str(session_id),
+            "agent_progress",
+            {
+                "session_id": session_id,
+                "stage": stage,
+                "details": details or {},
+            },
+        )
+
     return await runtime.generate_agent_response(
         session_id=session_id,
         server_id=server_id,
         content=content,
+        progress_cb=progress,
     )
 
 

@@ -95,6 +95,22 @@ export function Workspace() {
       case 'agent_message':
         appendMessage(data.data)
         break
+      case 'agent_progress': {
+        const stage = data.data?.stage || 'thinking'
+        const details = data.data?.details || {}
+        const content = stage === 'tool_call'
+          ? `Tool: ${details.tool}\n${JSON.stringify(details.result ?? {}, null, 2)}`
+          : stage === 'error'
+          ? `Provider error\n${JSON.stringify(details, null, 2)}`
+          : details.message || stage
+        appendMessage({
+          id: `progress-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'progress',
+          content,
+          created_at: new Date().toISOString(),
+        })
+        break
+      }
       case 'memory_approval_required':
         setMemoryPrompt(data.data)
         notifyBrowser('Memory Approval Required', 'AI generated memory candidates')
@@ -224,9 +240,16 @@ export function Workspace() {
 
   const handleSendUserMessage = useCallback(async (content) => {
     if (!activeSession?.id) return
+    const optimisticId = `optimistic-${Date.now()}`
+    appendMessage({
+      id: optimisticId,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+    })
     await chatApi.sendMessage(activeSession.id, { role: 'user', content })
     await fetchMessages(activeSession.id)
-  }, [activeSession?.id, fetchMessages])
+  }, [activeSession?.id, appendMessage, fetchMessages])
 
   if (!server) {
     return <div className="min-h-screen bg-[#0f1117] flex items-center justify-center text-gray-400">Loading...</div>
