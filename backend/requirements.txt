@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+paramiko
+cryptography
+pydantic
+python-dotenv
+agent-client-protocol
+httpx

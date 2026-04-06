@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0f1117;
+  color: #e5e7eb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.react-flow__node {
+  width: auto;
+}
+
+.command-card {
+  min-width: 280px;
+  max-width: 350px;
+}
+
+.status-pending { border-left: 4px solid #eab308; }
+.status-approved { border-left: 4px solid #3b82f6; }
+.status-executing { border-left: 4px solid #f97316; }
+.status-success { border-left: 4px solid #22c55e; }
+.status-failed { border-left: 4px solid #ef4444; }
+.status-denied { border-left: 4px solid #6b7280; }
+.status-blocked { border-left: 4px solid #1f2937; }
