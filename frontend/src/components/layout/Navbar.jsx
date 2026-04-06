@@ -1,5 +1,6 @@
-import { AlertTriangle, Bell } from 'lucide-react'
+import { AlertTriangle, Bell, ChevronRight, Home } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 export function Navbar({ server, dangerMode, onDangerModeToggle }) {
   const [showConfirm, setShowConfirm] = useState(false)
@@ -23,7 +24,20 @@ export function Navbar({ server, dangerMode, onDangerModeToggle }) {
     <>
       <header className="bg-[#1a1d27] border-b border-gray-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-white font-semibold">{server.label}</h2>
+          <nav className="flex items-center gap-1 text-sm">
+            <Link to="/" className="text-gray-400 hover:text-white flex items-center gap-1">
+              <Home className="w-3.5 h-3.5" />
+              Home
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+            <Link to={`/sessions/${server.id}`} className="text-gray-400 hover:text-white">
+              Sessions
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+            <span className="text-gray-500">Workspace</span>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+            <h2 className="text-white font-semibold">{server.label}</h2>
+          </nav>
           <span className="bg-green-900/50 text-green-400 text-xs px-2 py-1 rounded-full">
             {server.hostname}:{server.port}
           </span>
