@@ -67,6 +67,8 @@ export const agents = {
 export const settings = {
   getDangerMode: (sessionId) => api.get('/settings/danger-mode', { params: { session_id: sessionId } }),
   setDangerMode: (enabled, sessionId) => api.put('/settings/danger-mode', { enabled }, { params: { session_id: sessionId } }),
+  getDebugMode: () => api.get('/settings/debug-mode'),
+  setDebugMode: (enabled) => api.put('/settings/debug-mode', { enabled }),
 }
 
 export const acp = {

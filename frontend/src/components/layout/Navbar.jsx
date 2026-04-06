@@ -1,8 +1,9 @@
-import { AlertTriangle, Bell, ChevronRight, Home } from 'lucide-react'
+import { AlertTriangle, Bell, Bug, ChevronRight, Home } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { settings } from '../../lib/api'
 
-export function Navbar({ server, dangerMode, onDangerModeToggle }) {
+export function Navbar({ server, dangerMode, debugMode, onDangerModeToggle, onDebugModeChange }) {
   const [showConfirm, setShowConfirm] = useState(false)
 
   const handleNotificationClick = async () => {
@@ -17,6 +18,16 @@ export function Navbar({ server, dangerMode, onDangerModeToggle }) {
       setShowConfirm(true)
     } else {
       onDangerModeToggle()
+    }
+  }
+
+  const handleDebugToggle = async () => {
+    const next = !debugMode
+    try {
+      await settings.setDebugMode(next)
+      if (onDebugModeChange) onDebugModeChange(next)
+    } catch {
+      // noop
     }
   }
 
@@ -43,6 +54,17 @@ export function Navbar({ server, dangerMode, onDangerModeToggle }) {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={handleDebugToggle}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              debugMode
+                ? 'bg-cyan-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:text-cyan-300 hover:bg-cyan-900/30'
+            }`}
+          >
+            <Bug className="w-4 h-4" />
+            Debug
+          </button>
           <button
             onClick={handleDangerToggle}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${

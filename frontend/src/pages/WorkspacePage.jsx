@@ -50,6 +50,7 @@ export function Workspace() {
   const [acpStatus, setAcpStatus] = useState(null)
   const [failedCommandError, setFailedCommandError] = useState('')
   const [noAgentConfigured, setNoAgentConfigured] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
 
   const server = useMemo(() => servers.find((s) => s.id === numericServerId), [servers, numericServerId])
 
@@ -100,6 +101,8 @@ export function Workspace() {
         const details = data.data?.details || {}
         const content = stage === 'tool_call'
           ? `Tool: ${details.tool}\n${JSON.stringify(details.result ?? {}, null, 2)}`
+          : stage === 'debug'
+          ? `Debug\n${JSON.stringify(details, null, 2)}`
           : stage === 'error'
           ? `Provider error\n${JSON.stringify(details, null, 2)}`
           : details.message || stage
@@ -144,6 +147,7 @@ export function Workspace() {
     fetchServers()
     fetchSessions(numericServerId)
     fetch('/api/agents/').then((res) => res.json()).then((agents) => setNoAgentConfigured(!agents.length)).catch(() => setNoAgentConfigured(true))
+    settings.getDebugMode().then(({ data }) => setDebugMode(Boolean(data.enabled))).catch(() => setDebugMode(false))
     acp.status().then(({ data }) => {
       setAcpStatus(data)
       if (data.failed) {
@@ -257,7 +261,13 @@ export function Workspace() {
 
   return (
     <div className="h-screen flex flex-col bg-[#0f1117]">
-      <Navbar server={server} dangerMode={dangerMode} onDangerModeToggle={handleDangerToggle} />
+      <Navbar
+        server={server}
+        dangerMode={dangerMode}
+        debugMode={debugMode}
+        onDangerModeToggle={handleDangerToggle}
+        onDebugModeChange={setDebugMode}
+      />
 
       {acpStatus?.failed && (
         <div className="bg-red-900/40 border-b border-red-700 text-red-200 text-sm px-4 py-2">

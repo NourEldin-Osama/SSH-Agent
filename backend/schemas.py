@@ -234,3 +234,7 @@ class AppSettingResponse(AppSettingBase):
 
 class DangerModeUpdate(BaseModel):
     enabled: bool
+
+
+class DebugModeUpdate(BaseModel):
+    enabled: bool

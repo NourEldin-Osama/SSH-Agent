@@ -54,6 +54,11 @@ From project root:
   - `ACP_MODEL_NAME=<model>`
   - Active agent must have `base_url` configured (OpenAI-compatible chat completions endpoint).
 
+### Debug Mode
+
+- Enable Debug in workspace navbar to stream internal agent progress events.
+- Debug events include provider call metadata, MCP tool invocation results, and fallback reasons.
+
 ## First Server Setup
 
 1. Open Home page.
