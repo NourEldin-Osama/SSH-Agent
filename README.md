@@ -21,16 +21,16 @@ Local-first web app to manage SSH servers, run AI-assisted command sessions, and
 cp .env.example .env
 ```
 
-2. Install backend dependencies:
+2. Install backend dependencies (uv):
 
 ```bash
-python -m pip install -r backend/requirements.txt
+uv sync --project backend
 ```
 
 3. Install frontend dependencies:
 
 ```bash
-cd frontend && npm install
+cd frontend && pnpm install
 ```
 
 ## Run App
