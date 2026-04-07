@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import re
 from typing import Any, Awaitable, Callable
@@ -34,8 +33,7 @@ from mcp_tools import (
     read_server_memory_tool,
     write_server_memory_tool,
 )
-
-logger = logging.getLogger("ssh-agent-commander.acp")
+from loguru import logger
 
 
 def _truthy(value: str | None) -> bool:
@@ -505,7 +503,7 @@ class ACPServerRuntime:
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Real model path failed; using local ACP tool synthesis: %s",
+                        "Real model path failed; using local ACP tool synthesis: {}",
                         exc,
                     )
                     await emit("error", {"message": str(exc)})
@@ -598,7 +596,7 @@ class ACPServerRuntime:
                 pass
 
     async def _run_forever(self) -> None:
-        logger.info("ACP runtime started on port %s", self.port)
+        logger.info("ACP runtime started on port {}", self.port)
         while True:
             try:
                 await run_agent(SSHAgentCommanderAgent(self._tooling), port=self.port)
@@ -609,7 +607,7 @@ class ACPServerRuntime:
             except Exception as exc:
                 self._failed = True
                 self._failure_reason = str(exc)
-                logger.exception("ACP runtime crashed: %s", exc)
+                logger.exception("ACP runtime crashed: {}", exc)
                 await asyncio.sleep(3)
 
     def status_payload(self) -> dict[str, Any]:

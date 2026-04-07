@@ -242,3 +242,19 @@ class DangerModeUpdate(BaseModel):
 
 class DebugModeUpdate(BaseModel):
     enabled: bool
+
+
+class TerminalCommandCreate(BaseModel):
+    server_id: int
+    session_id: Optional[int] = None
+    command: str
+    timeout: int = 30
+
+
+class TerminalCommandResponse(BaseModel):
+    server_id: int
+    session_id: Optional[int] = None
+    command: str
+    output: str
+    exit_status: int
+    executed_at: datetime

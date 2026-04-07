@@ -77,4 +77,8 @@ export const acp = {
   invokeTool: (toolName, payload) => api.post(`/acp/tools/${toolName}`, payload),
 }
 
+export const terminal = {
+  execute: (data) => api.post('/terminal/execute', data),
+}
+
 export default api

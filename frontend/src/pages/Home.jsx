@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useServerStore } from '../store/useServerStore'
 import { ServerList } from '../components/servers/ServerList'
 import { ServerForm } from '../components/servers/ServerForm'
-import { Plus, Server } from 'lucide-react'
+import { Plus, Server, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { AppHeader } from '../components/layout/AppHeader'
 
 export function Home() {
   const { servers, fetchServers } = useServerStore()
@@ -26,27 +27,33 @@ export function Home() {
 
   return (
     <div className="min-h-screen bg-[#0f1117]">
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Server className="w-7 h-7 text-blue-400" />
-            <h1 className="text-xl font-bold text-white">SSH Agent Commander</h1>
+      <AppHeader breadcrumbs={[{ label: 'Servers' }]} />
+      <section className="border-b border-gray-800 bg-gradient-to-r from-cyan-900/20 via-blue-900/10 to-transparent">
+        <div className="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <Server className="w-7 h-7 text-cyan-400" />
+              <h1 className="text-2xl font-bold text-white">SSH Agent Commander</h1>
+            </div>
+            <p className="text-sm text-gray-400">Manage servers, run AI-assisted sessions, or execute manual SSH terminal commands.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link to="/settings" className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-2">
-              Settings
-            </Link>
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Add Server
-            </button>
-          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add Server
+          </button>
         </div>
-      </header>
+      </section>
       <main className="max-w-6xl mx-auto px-6 py-8">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-400">{servers.length} server{servers.length !== 1 ? 's' : ''} configured</p>
+          <Link to="/settings" className="text-sm text-cyan-300 hover:text-cyan-200 inline-flex items-center gap-1">
+            Global Settings
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
         <ServerList servers={servers} onEdit={handleEdit} />
       </main>
       {showForm && (

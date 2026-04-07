@@ -1,4 +1,3 @@
-import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -8,14 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from acp_server import ACPServerRuntime
 from database import Base, engine
+from logger import configure_logging
 from routers import agents, chat, commands, memories, permissions, servers, sessions
+from routers import terminal
 from routers.settings import router as settings_router
 from ws import active_connections, broadcast_to_session
+from loguru import logger
 
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ssh-agent-commander")
+configure_logging()
 
 
 @asynccontextmanager
@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     await runtime.start()
     status = runtime.status_payload()
     if status.get("failed"):
-        logger.error("ACP server startup failed: %s", status.get("failure_reason"))
+        logger.error("ACP server startup failed: {}", status.get("failure_reason"))
     await broadcast_to_session("global", "acp_status", status)
 
     yield
@@ -59,6 +59,7 @@ app.include_router(memories.router)
 app.include_router(permissions.router)
 app.include_router(chat.router)
 app.include_router(settings_router)
+app.include_router(terminal.router)
 
 
 @app.get("/api/acp/status")
@@ -91,6 +92,13 @@ async def invoke_acp_tool(tool_name: str, payload: dict):
         session_id=session_id,
         server_id=server_id,
         arguments=payload.get("arguments") or {},
+    )
+    logger.info(
+        "ACP tool invoked: tool_name={}, session_id={}, server_id={}, ok={}",
+        tool_name,
+        session_id,
+        server_id,
+        result.get("ok") if isinstance(result, dict) else None,
     )
     return result
 

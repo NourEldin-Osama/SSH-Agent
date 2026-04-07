@@ -1,9 +1,9 @@
-import { AlertTriangle, Bell, Bug, ChevronRight, Home } from 'lucide-react'
+import { AlertTriangle, Bell, Bug, ChevronRight, Home, TerminalSquare } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { settings } from '../../lib/api'
 
-export function Navbar({ server, dangerMode, debugMode, onDangerModeToggle, onDebugModeChange }) {
+export function Navbar({ server, dangerMode, debugMode, showTerminal, onDangerModeToggle, onDebugModeChange, onToggleTerminal }) {
   const [showConfirm, setShowConfirm] = useState(false)
 
   const handleNotificationClick = async () => {
@@ -54,6 +54,17 @@ export function Navbar({ server, dangerMode, debugMode, onDangerModeToggle, onDe
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={onToggleTerminal}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showTerminal
+                ? 'bg-emerald-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:text-emerald-300 hover:bg-emerald-900/30'
+            }`}
+          >
+            <TerminalSquare className="w-4 h-4" />
+            Terminal
+          </button>
           <button
             onClick={handleDebugToggle}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { acp, memories, settings, chat as chatApi } from '../lib/api'
+import { acp, memories, settings, chat as chatApi, terminal } from '../lib/api'
 import { wsManager } from '../lib/websocket'
 import { ChatPanel } from '../components/chat/ChatPanel'
 import { CommandGraph } from '../components/commands/CommandGraph'
@@ -10,6 +10,7 @@ import { Navbar } from '../components/layout/Navbar'
 import { PanelLayout } from '../components/layout/PanelLayout'
 import { Sidebar } from '../components/layout/Sidebar'
 import { MemoryApprovalPrompt } from '../components/memories/MemoryApprovalPrompt'
+import { TerminalPanel } from '../components/terminal/TerminalPanel'
 import { useChatStore } from '../store/useChatStore'
 import { useCommandStore } from '../store/useCommandStore'
 import { useServerStore } from '../store/useServerStore'
@@ -51,6 +52,7 @@ export function Workspace() {
   const [failedCommandError, setFailedCommandError] = useState('')
   const [noAgentConfigured, setNoAgentConfigured] = useState(false)
   const [debugMode, setDebugMode] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(true)
 
   const server = useMemo(() => servers.find((s) => s.id === numericServerId), [servers, numericServerId])
 
@@ -138,6 +140,9 @@ export function Workspace() {
         if (activeSession?.id === data.data?.session_id) {
           updateSessionTitle(activeSession.id, data.data.title)
         }
+        break
+      case 'terminal_command_result':
+        toast.success(`Terminal command finished (exit ${data.data?.exit_status ?? '?'})`)
         break
       default:
         break
@@ -261,6 +266,11 @@ export function Workspace() {
     await fetchMessages(activeSession.id)
   }, [activeSession?.id, appendMessage, fetchMessages])
 
+  const handleExecuteTerminal = useCallback(async (payload) => {
+    const { data } = await terminal.execute(payload)
+    return data
+  }, [])
+
   if (!server) {
     return <div className="min-h-screen bg-[#0f1117] flex items-center justify-center text-gray-400">Loading...</div>
   }
@@ -273,6 +283,8 @@ export function Workspace() {
         debugMode={debugMode}
         onDangerModeToggle={handleDangerToggle}
         onDebugModeChange={setDebugMode}
+        showTerminal={showTerminal}
+        onToggleTerminal={() => setShowTerminal((v) => !v)}
       />
 
       {acpStatus?.failed && (
@@ -282,29 +294,41 @@ export function Workspace() {
       )}
 
       <div className="flex-1 flex overflow-hidden">
-        <PanelLayout
-          left={
-            <ChatPanel
-              server={server}
-              session={activeSession}
-              readOnly={readOnly}
-              onStartSession={startNewSession}
-              onSend={handleSendUserMessage}
-              onEndSession={handleEndSession}
-              messages={messages}
-              noAgentConfigured={noAgentConfigured}
-              onSendFailureToAI={handleSendFailureToAI}
-            />
-          }
-          right={
-            <CommandGraph
-              commands={commands}
-              session={activeSession}
-              readOnly={readOnly}
-              onStartSession={startNewSession}
-            />
-          }
-        />
+        <div className="flex-1 flex overflow-hidden">
+          <PanelLayout
+            left={
+              <ChatPanel
+                server={server}
+                session={activeSession}
+                readOnly={readOnly}
+                onStartSession={startNewSession}
+                onSend={handleSendUserMessage}
+                onEndSession={handleEndSession}
+                messages={messages}
+                noAgentConfigured={noAgentConfigured}
+                onSendFailureToAI={handleSendFailureToAI}
+              />
+            }
+            right={
+              <CommandGraph
+                commands={commands}
+                session={activeSession}
+                readOnly={readOnly}
+                onStartSession={startNewSession}
+              />
+            }
+          />
+          {showTerminal && (
+            <div className="w-[420px] max-w-[45vw]">
+              <TerminalPanel
+                serverId={numericServerId}
+                sessionId={activeSession?.id}
+                disabled={!activeSession || readOnly}
+                onExecute={handleExecuteTerminal}
+              />
+            </div>
+          )}
+        </div>
         <Sidebar
           sessions={sessionList.filter((s) => s.server_id === numericServerId)}
           activeSession={activeSession}

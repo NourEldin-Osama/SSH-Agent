@@ -7,3 +7,4 @@ pydantic
 python-dotenv
 agent-client-protocol
 httpx
+loguru

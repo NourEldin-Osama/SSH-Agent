@@ -78,3 +78,11 @@ From project root:
 
 - ACP runtime status is available at `GET /api/acp/status`.
 - Command tool calls can be exercised via `POST /api/acp/tools/{tool_name}`.
+
+## Logging (Loguru)
+
+- Backend logging uses `loguru`.
+- Configure with env vars:
+  - `LOG_LEVEL=INFO|DEBUG|WARNING|ERROR`
+  - `LOG_FILE=/path/to/logfile.log` (optional)
+- If `LOG_FILE` is set, logs rotate at 10 MB, retain 7 days, and are compressed.
