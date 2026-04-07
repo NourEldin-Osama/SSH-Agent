@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { sessions as sessionsApi } from '../lib/api'
 import { AppHeader } from '../components/layout/AppHeader'
+import { CalendarDays, Command, ExternalLink } from 'lucide-react'
 
 export function SessionsPage() {
   const { serverId } = useParams()
@@ -22,9 +23,15 @@ export function SessionsPage() {
           <div key={s.id} className="bg-[#1a1d27] border border-gray-800 rounded-lg px-4 py-3 flex justify-between">
             <div>
               <div className="font-medium">{s.title || 'Untitled Session'}</div>
-              <div className="text-xs text-gray-500">{new Date(s.created_at).toLocaleString()} • {s.command_count || 0} cmds</div>
+              <div className="text-xs text-gray-500 flex items-center gap-3">
+                <span className="inline-flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5" />{new Date(s.created_at).toLocaleString()}</span>
+                <span className="inline-flex items-center gap-1"><Command className="w-3.5 h-3.5" />{s.command_count || 0} cmds</span>
+              </div>
             </div>
-            <Link className="text-blue-400 text-sm" to={`/workspace/${s.server_id}?session_id=${s.id}`}>Open</Link>
+            <Link className="text-blue-400 text-sm inline-flex items-center gap-1" to={`/workspace/${s.server_id}?session_id=${s.id}`}>
+              Open
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </div>
         ))}
       </div>

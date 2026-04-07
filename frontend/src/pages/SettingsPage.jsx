@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { agents, permissions } from '../lib/api'
 import { usePermissionStore } from '../store/usePermissionStore'
 import { useServerStore } from '../store/useServerStore'
-import { Plus, Trash2, Edit, Save, X } from 'lucide-react'
+import { Plus, Trash2, Edit, Save, X, Bot, ShieldAlert, Globe, Server as ServerIcon, KeyRound } from 'lucide-react'
 import { AppHeader } from '../components/layout/AppHeader'
 
 export function Settings() {
@@ -66,7 +66,7 @@ function AgentConfigs() {
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Agent Configurations</h2>
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-cyan-300" />Agent Configurations</h2>
         <button
           onClick={() => { setShowForm(true); setEditing(null); setForm({ agent_name: '', api_key: '', base_url: '', is_active: true }) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
@@ -226,7 +226,7 @@ function WhitelistBlacklistManager() {
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-white mb-4">Whitelist / Blacklist Rules</h2>
+      <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><ShieldAlert className="w-5 h-5 text-amber-300" />Whitelist / Blacklist Rules</h2>
       <form onSubmit={handleSubmit} className="bg-[#1a1d27] border border-gray-700 rounded-xl p-4 mb-4 space-y-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
@@ -297,14 +297,14 @@ function WhitelistBlacklistManager() {
       </form>
       <div className="space-y-4">
         <div>
-          <h3 className="text-sm text-gray-400 mb-2">Global Rules</h3>
+          <h3 className="text-sm text-gray-400 mb-2 flex items-center gap-2"><Globe className="w-4 h-4" />Global Rules</h3>
           <div className="space-y-2">
             {globalRules.map(renderRuleRow)}
             {globalRules.length === 0 && <p className="text-sm text-gray-600">No global rules</p>}
           </div>
         </div>
         <div>
-          <h3 className="text-sm text-gray-400 mb-2">Per-Server Rules</h3>
+          <h3 className="text-sm text-gray-400 mb-2 flex items-center gap-2"><ServerIcon className="w-4 h-4" />Per-Server Rules</h3>
           <div className="space-y-2">
             {perServerRules.map(renderRuleRow)}
             {perServerRules.length === 0 && <p className="text-sm text-gray-600">No per-server rules</p>}

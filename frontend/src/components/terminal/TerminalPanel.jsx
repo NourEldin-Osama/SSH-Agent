@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Play, Terminal as TerminalIcon, Trash2 } from 'lucide-react'
+import { Play, Terminal as TerminalIcon, Trash2, CheckCircle2, XCircle } from 'lucide-react'
 
 export function TerminalPanel({ serverId, sessionId, disabled, onExecute }) {
   const [command, setCommand] = useState('ls -la')
@@ -73,7 +73,12 @@ export function TerminalPanel({ serverId, sessionId, disabled, onExecute }) {
               {item.output || '(no output)'}
             </pre>
             <div className="text-[11px] text-gray-500 mt-2">
-              exit={item.exit_status} • {new Date(item.executed_at).toLocaleTimeString()}
+              <span className="inline-flex items-center gap-1">
+                {item.exit_status === 0 ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <XCircle className="w-3 h-3 text-red-400" />}
+                exit={item.exit_status}
+              </span>
+              {' • '}
+              {new Date(item.executed_at).toLocaleTimeString()}
             </div>
           </div>
         ))}
