@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from scalar_fastapi import get_scalar_api_reference
 
 from acp_server import ACPServerRuntime
 from database import Base, engine
@@ -60,6 +61,14 @@ app.include_router(permissions.router)
 app.include_router(chat.router)
 app.include_router(settings_router)
 app.include_router(terminal.router)
+
+
+@app.get("/scalar", include_in_schema=False)
+def scalar_docs():
+    return get_scalar_api_reference(
+        title="SSH Agent Commander API",
+        openapi_url=app.openapi_url,
+    )
 
 
 @app.get("/api/acp/status")
