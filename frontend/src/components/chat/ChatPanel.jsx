@@ -91,7 +91,10 @@ export function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput onSend={onSend} disabled={!session || readOnly || noAgentConfigured} />
+      <ChatInput
+        onSend={(content) => onSend?.(content, { agent_name: selectedAgent, model: selectedModel })}
+        disabled={!session || readOnly || noAgentConfigured}
+      />
     </div>
   )
 }

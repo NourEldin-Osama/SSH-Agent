@@ -55,6 +55,14 @@ def _is_debug_enabled() -> bool:
         db.close()
 
 
+def _resolve_model(preferred_model: str | None) -> str:
+    return preferred_model or os.getenv("ACP_MODEL_NAME", "gpt-4o-mini")
+
+
+def _resolve_provider_kind(base_url: str | None) -> str:
+    return "openai-compatible" if base_url else "local-agent"
+
+
 def _infer_mcp_command(user_text: str) -> str | None:
     lowered = (user_text or "").strip().lower()
     if not lowered:
@@ -236,6 +244,8 @@ class ACPServerRuntime:
         session_id: int,
         server_id: int,
         content: str,
+        agent_name: str | None = None,
+        model: str | None = None,
         progress_cb: Callable[[str, dict[str, Any] | None], Awaitable[None]]
         | None = None,
     ) -> str:
@@ -303,6 +313,15 @@ class ACPServerRuntime:
                 .order_by(AgentConfig.created_at.desc())
                 .first()
             )
+            if agent_name:
+                preferred_agent = (
+                    db.query(AgentConfig)
+                    .filter(AgentConfig.agent_name == agent_name)
+                    .order_by(AgentConfig.created_at.desc())
+                    .first()
+                )
+                if preferred_agent:
+                    active_agent = preferred_agent
             if active_agent is None:
                 if debug_enabled:
                     await emit(
@@ -335,6 +354,21 @@ class ACPServerRuntime:
                 "tool_call", {"tool": "read_server_memory", "result": memory_info}
             )
 
+            selected_model = _resolve_model(model)
+            provider_kind = _resolve_provider_kind(active_agent.base_url)
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "agent_selection",
+                        "selected_agent": active_agent.agent_name,
+                        "provider_kind": provider_kind,
+                        "selected_model": selected_model,
+                        "requested_agent": agent_name,
+                        "requested_model": model,
+                    },
+                )
+
             if active_agent.base_url and _truthy(
                 os.getenv("ACP_REAL_MODEL_ENABLED", "false")
             ):
@@ -346,25 +380,30 @@ class ACPServerRuntime:
                         {
                             "message": "Calling model provider",
                             "provider": active_agent.base_url,
-                            "model": os.getenv("ACP_MODEL_NAME", "gpt-4o-mini"),
+                            "model": selected_model,
                         },
                     )
 
                     api_key = decrypt_value(active_agent.encrypted_api_key)
                     payload = {
-                        "model": os.getenv("ACP_MODEL_NAME", "gpt-4o-mini"),
+                        "model": selected_model,
                         "messages": [
                             {
                                 "role": "system",
-                                "content": "You are SSH Agent Commander assistant. Use provided server and memory context.",
+                                "content": (
+                                    "You are SSH Agent Commander assistant. "
+                                    "Server connection details are already configured internally. "
+                                    "Never ask for host, username, port, or raw ssh command usage. "
+                                    "When execution is needed, use the execute_command MCP tool."
+                                ),
                             },
                             {
                                 "role": "user",
                                 "content": (
                                     f"User: {content}\n"
-                                    f"Server: {server_info}\n"
                                     f"Memory: {memory_info}\n"
-                                    "Respond with concise operational guidance and next best command."
+                                    "Respond with concise operational guidance. "
+                                    "If a command is needed, use execute_command MCP tool."
                                 ),
                             },
                         ],
@@ -510,9 +549,9 @@ class ACPServerRuntime:
                 )
             result_text = (
                 f"[{active_agent.agent_name}] Received: {content}\n"
-                f"Server context: {server_info}\n"
                 f"Memory context: {memory_info}\n"
-                "Use execute_command MCP tool to propose actionable steps."
+                "Use execute_command MCP tool to run needed commands. "
+                "Do not request host/username/port from user."
             )
             if debug_enabled:
                 await emit(
@@ -600,6 +639,8 @@ class ACPServerRuntime:
         session_id: int,
         server_id: int,
         content: str,
+        agent_name: str | None = None,
+        model: str | None = None,
         progress_cb: Callable[[str, dict[str, Any] | None], Awaitable[None]]
         | None = None,
     ) -> str:
@@ -607,6 +648,8 @@ class ACPServerRuntime:
             session_id,
             server_id,
             content,
+            agent_name=agent_name,
+            model=model,
             progress_cb=progress_cb,
         )
 

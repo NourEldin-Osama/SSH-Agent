@@ -66,6 +66,8 @@ class SessionResponse(SessionBase):
 class ChatMessageBase(BaseModel):
     role: str
     content: str
+    agent_name: Optional[str] = None
+    model: Optional[str] = None
 
 
 class ChatMessageCreate(ChatMessageBase):

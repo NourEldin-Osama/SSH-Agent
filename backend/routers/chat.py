@@ -49,6 +49,8 @@ async def _invoke_agent_runtime(
     session_id: int,
     server_id: int,
     content: str,
+    agent_name: str | None = None,
+    model: str | None = None,
 ) -> str:
     runtime = getattr(request.app.state, "acp_runtime", None)
     if runtime is None:
@@ -69,6 +71,8 @@ async def _invoke_agent_runtime(
         session_id=session_id,
         server_id=server_id,
         content=content,
+        agent_name=agent_name,
+        model=model,
         progress_cb=progress,
     )
 
@@ -93,8 +97,18 @@ async def send_message(
     db.commit()
     db.refresh(user_message)
 
+    selected_agent = None
+    if message.agent_name:
+        selected_agent = (
+            db.query(AgentConfig)
+            .filter(AgentConfig.agent_name == message.agent_name)
+            .order_by(AgentConfig.created_at.desc())
+            .first()
+        )
+
     active_agent = (
-        db.query(AgentConfig)
+        selected_agent
+        or db.query(AgentConfig)
         .filter(AgentConfig.is_active.is_(True))
         .order_by(AgentConfig.created_at.desc())
         .first()
@@ -105,6 +119,8 @@ async def send_message(
             session_id=session_id,
             server_id=session.server_id,
             content=message.content,
+            agent_name=message.agent_name,
+            model=message.model,
         )
         agent_content = f"[{active_agent.agent_name}] {runtime_content}"
     else:

@@ -243,7 +243,7 @@ export function Workspace() {
     }
   }, [])
 
-  const handleSendUserMessage = useCallback(async (content) => {
+  const handleSendUserMessage = useCallback(async (content, meta = {}) => {
     if (!activeSession?.id) return
     const optimisticId = `optimistic-${Date.now()}`
     appendMessage({
@@ -252,7 +252,12 @@ export function Workspace() {
       content,
       created_at: new Date().toISOString(),
     })
-    await chatApi.sendMessage(activeSession.id, { role: 'user', content })
+    await chatApi.sendMessage(activeSession.id, {
+      role: 'user',
+      content,
+      agent_name: meta.agent_name,
+      model: meta.model,
+    })
     await fetchMessages(activeSession.id)
   }, [activeSession?.id, appendMessage, fetchMessages])
 
