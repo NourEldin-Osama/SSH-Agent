@@ -3,15 +3,12 @@ import { agents, permissions } from '../lib/api'
 import { usePermissionStore } from '../store/usePermissionStore'
 import { useServerStore } from '../store/useServerStore'
 import { Plus, Trash2, Edit, Save, X } from 'lucide-react'
+import { AppHeader } from '../components/layout/AppHeader'
 
 export function Settings() {
   return (
     <div className="min-h-screen bg-[#0f1117]">
-      <header className="border-b border-gray-800 px-6 py-4">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-xl font-bold text-white">Settings</h1>
-        </div>
-      </header>
+      <AppHeader breadcrumbs={[{ label: 'Settings' }]} />
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-8">
         <AgentConfigs />
         <WhitelistBlacklistManager />
@@ -25,9 +22,17 @@ function AgentConfigs() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ agent_name: '', api_key: '', base_url: '', is_active: true })
+  const [localInstalled, setLocalInstalled] = useState({})
 
   useEffect(() => {
     agents.list().then(({ data }) => setAgentList(data))
+    agents.localInstalled().then(({ data }) => {
+      const map = {}
+      ;(data.agents || []).forEach((a) => {
+        map[a.agent_name] = a
+      })
+      setLocalInstalled(map)
+    }).catch(() => setLocalInstalled({}))
   }, [])
 
   const handleSubmit = async (e) => {
@@ -94,9 +99,14 @@ function AgentConfigs() {
                 value={form.api_key}
                 onChange={(e) => setForm({ ...form, api_key: e.target.value })}
                 className="w-full bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                required={!editing}
+                required={!editing && !localInstalled[form.agent_name]?.installed}
                 placeholder={editing ? 'Leave blank to keep current' : ''}
               />
+              {localInstalled[form.agent_name]?.installed && (
+                <p className="text-[11px] text-green-400 mt-1">
+                  Local executable detected: {localInstalled[form.agent_name]?.executable}. API key optional.
+                </p>
+              )}
             </div>
           </div>
           <div className="flex gap-2">
@@ -126,6 +136,9 @@ function AgentConfigs() {
               <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${agent.is_active ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
                 {agent.is_active ? 'Active' : 'Inactive'}
               </span>
+              {agent.installed_local && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-cyan-900/40 text-cyan-300">Local</span>
+              )}
             </div>
             <div className="flex gap-1">
               <button onClick={() => handleEdit(agent)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded">

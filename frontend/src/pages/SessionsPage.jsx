@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { sessions as sessionsApi } from '../lib/api'
+import { AppHeader } from '../components/layout/AppHeader'
 
 export function SessionsPage() {
   const { serverId } = useParams()
@@ -13,6 +14,8 @@ export function SessionsPage() {
 
   return (
     <div className="min-h-screen bg-[#0f1117] text-white p-6">
+      <AppHeader breadcrumbs={[{ label: 'Sessions' }]} />
+      <div className="max-w-4xl mx-auto pt-6">
       <h1 className="text-xl font-bold mb-4">Sessions</h1>
       <div className="space-y-2">
         {sessions.map((s) => (
@@ -24,6 +27,7 @@ export function SessionsPage() {
             <Link className="text-blue-400 text-sm" to={`/workspace/${s.server_id}?session_id=${s.id}`}>Open</Link>
           </div>
         ))}
+      </div>
       </div>
     </div>
   )

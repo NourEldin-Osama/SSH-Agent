@@ -62,6 +62,7 @@ export const agents = {
   update: (id, data) => api.put(`/agents/${id}`, data),
   remove: (id) => api.delete(`/agents/${id}`),
   models: (name) => api.get(`/agents/${name}/models`),
+  localInstalled: () => api.get('/agents/local/installed'),
 }
 
 export const settings = {

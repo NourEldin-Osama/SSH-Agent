@@ -179,7 +179,7 @@ class PermissionRuleResponse(PermissionRuleBase):
 
 class AgentConfigBase(BaseModel):
     agent_name: str
-    api_key: str
+    api_key: Optional[str] = None
     base_url: Optional[str] = None
     is_active: bool = True
 
@@ -201,6 +201,8 @@ class AgentConfigResponse(BaseModel):
     base_url: Optional[str] = None
     is_active: bool
     created_at: datetime
+    installed_local: Optional[bool] = None
+    local_executable: Optional[str] = None
 
     class Config:
         from_attributes = True
