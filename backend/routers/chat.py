@@ -2,6 +2,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from loguru import logger
 
 from database import get_db
 from models import AgentConfig, ChatMessage, Session as SessionModel
@@ -57,6 +58,28 @@ async def _invoke_agent_runtime(
         return _build_fallback_response(content)
 
     async def progress(stage: str, details: dict | None):
+        payload = details or {}
+        if stage == "error":
+            logger.error(
+                "Agent progress stage={} session_id={} details={}",
+                stage,
+                session_id,
+                payload,
+            )
+        elif stage in {"tool_call", "completed", "debug"}:
+            logger.debug(
+                "Agent progress stage={} session_id={} details={}",
+                stage,
+                session_id,
+                payload,
+            )
+        else:
+            logger.info(
+                "Agent progress stage={} session_id={} details={}",
+                stage,
+                session_id,
+                payload,
+            )
         await broadcast_to_session(
             str(session_id),
             "agent_progress",

@@ -41,6 +41,12 @@ From project root:
 ./start.sh
 ```
 
+Manual backend run with uv:
+
+```bash
+uv run --project backend uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir backend
+```
+
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:5173`
 
@@ -83,6 +89,12 @@ From project root:
 
 - Backend logging uses `loguru`.
 - Configure with env vars:
-  - `LOG_LEVEL=INFO|DEBUG|WARNING|ERROR`
+  - `LOG_LEVEL=TRACE|DEBUG|INFO|WARNING|ERROR`
   - `LOG_FILE=/path/to/logfile.log` (optional)
 - If `LOG_FILE` is set, logs rotate at 10 MB, retain 7 days, and are compressed.
+
+For full runtime telemetry (agent progress + provider/tool details), use:
+
+```bash
+LOG_LEVEL=DEBUG uv run --project backend uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir backend
+```

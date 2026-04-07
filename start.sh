@@ -14,8 +14,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-python "$ROOT/backend/init_db.py"
-uvicorn main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" --app-dir "$ROOT/backend" &
+uv run --project "$ROOT/backend" python "$ROOT/backend/init_db.py"
+uv run --project "$ROOT/backend" uvicorn main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" --app-dir "$ROOT/backend" &
 BACKEND_PID=$!
 
 npm --prefix "$ROOT/frontend" run dev -- --host 0.0.0.0

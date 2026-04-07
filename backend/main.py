@@ -116,6 +116,7 @@ async def invoke_acp_tool(tool_name: str, payload: dict):
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     await websocket.accept()
     active_connections.setdefault(session_id, []).append(websocket)
+    logger.info("WebSocket connected session_id={}", session_id)
     try:
         while True:
             await websocket.receive_text()
@@ -123,3 +124,4 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
         active_connections[session_id].remove(websocket)
         if not active_connections[session_id]:
             del active_connections[session_id]
+        logger.info("WebSocket disconnected session_id={}", session_id)

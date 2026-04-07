@@ -37,3 +37,9 @@ def configure_logging() -> None:
             enqueue=True,
             format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
         )
+
+    logger.info(
+        "Loguru configured level={} file_logging={}",
+        level,
+        bool(log_file),
+    )

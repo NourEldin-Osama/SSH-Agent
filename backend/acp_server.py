@@ -331,6 +331,14 @@ class ACPServerRuntime:
                     )
                 return "No active agent configured."
 
+            logger.info(
+                "Agent request start session_id={} server_id={} selected_agent={} requested_model={}",
+                session_id,
+                server_id,
+                active_agent.agent_name,
+                model,
+            )
+
             await emit("thinking", {"message": "Reading server context"})
 
             server_info = await call_tool(
@@ -483,6 +491,12 @@ class ACPServerRuntime:
                                 await emit(
                                     "completed", {"message": "Model response received"}
                                 )
+                                logger.info(
+                                    "Agent model response received session_id={} server_id={} model={}",
+                                    session_id,
+                                    server_id,
+                                    payload["model"],
+                                )
                                 if debug_enabled:
                                     await emit(
                                         "debug",
@@ -493,6 +507,13 @@ class ACPServerRuntime:
                                     )
                                 return text
                     body_text = resp.text[:1000]
+                    logger.error(
+                        "Provider error session_id={} server_id={} status={} body={}",
+                        session_id,
+                        server_id,
+                        resp.status_code,
+                        body_text,
+                    )
                     await emit(
                         "error",
                         {
@@ -509,6 +530,12 @@ class ACPServerRuntime:
                     await emit("error", {"message": str(exc)})
 
             await emit("completed", {"message": "Using fallback response path"})
+            logger.warning(
+                "Using fallback response path session_id={} server_id={} agent={}",
+                session_id,
+                server_id,
+                active_agent.agent_name,
+            )
             inferred = _infer_mcp_command(content)
             if inferred:
                 if debug_enabled:
