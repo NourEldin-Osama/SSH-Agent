@@ -137,3 +137,4 @@
 - [x] H) Toasts, browser notification hooks, blocked/failed command and ACP failure UI signal handling
 - [x] I) Startup/docs/env finalized (`start.sh`, `README.md`, `.env.example`)
 - [x] J) Validation run: frontend build, backend smoke, API e2e checklist coverage
+- [x] K) ACP model/config options now sourced via ACP session negotiation when enabled, with safe local fallback

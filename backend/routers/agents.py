@@ -1,7 +1,12 @@
 import shutil
-from fastapi import APIRouter, Depends, HTTPException
+import subprocess
+import json
+import re
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
+from loguru import logger
 
 from database import get_db
 from models import AgentConfig
@@ -25,6 +30,203 @@ def _resolve_local_binary(agent_name: str):
         if path:
             return True, path
     return False, None
+
+
+def _extract_models_from_text(text: str) -> list[str]:
+    if not text:
+        return []
+    patterns = [
+        r"claude-[a-z0-9.-]+",
+        r"gpt-[a-z0-9.-]+",
+        r"o[0-9](?:-[a-z0-9.-]+)?",
+    ]
+    found: list[str] = []
+    for pattern in patterns:
+        found.extend(re.findall(pattern, text.lower()))
+    deduped = []
+    seen = set()
+    for item in found:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
+
+
+def _run_model_discovery(executable: str, args: list[str]) -> list[str]:
+    try:
+        completed = subprocess.run(
+            [executable] + args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+    except Exception as exc:
+        logger.debug("Model discovery failed cmd={} error={}", [executable] + args, exc)
+        return []
+
+    text_out = (completed.stdout or "") + "\n" + (completed.stderr or "")
+    text_out = text_out.strip()
+    if not text_out:
+        return []
+
+    try:
+        parsed = json.loads(completed.stdout)
+        models = []
+        if isinstance(parsed, list):
+            for item in parsed:
+                if isinstance(item, str):
+                    models.append(item)
+                elif isinstance(item, dict):
+                    model_id = item.get("id") or item.get("name") or item.get("model")
+                    if isinstance(model_id, str):
+                        models.append(model_id)
+        elif isinstance(parsed, dict):
+            values = parsed.get("models") or parsed.get("data") or []
+            if isinstance(values, list):
+                for item in values:
+                    if isinstance(item, str):
+                        models.append(item)
+                    elif isinstance(item, dict):
+                        model_id = (
+                            item.get("id") or item.get("name") or item.get("model")
+                        )
+                        if isinstance(model_id, str):
+                            models.append(model_id)
+        if models:
+            return list(dict.fromkeys(models))
+    except Exception:
+        pass
+
+    return _extract_models_from_text(text_out)
+
+
+def _discover_local_models(agent_name: str) -> list[str]:
+    installed, executable = _resolve_local_binary(agent_name)
+    if not installed or not executable:
+        return []
+
+    probe_commands: list[list[str]] = []
+    if agent_name == "claude-code":
+        probe_commands = [
+            ["models", "--json"],
+            ["model", "list", "--json"],
+            ["--help"],
+        ]
+    elif agent_name == "opencode":
+        probe_commands = [
+            ["models", "--json"],
+            ["model", "list", "--json"],
+            ["--help"],
+        ]
+
+    discovered: list[str] = []
+    for args in probe_commands:
+        models = _run_model_discovery(executable, args)
+        if models:
+            discovered.extend(models)
+
+    deduped = []
+    seen = set()
+    for m in discovered:
+        if m not in seen:
+            deduped.append(m)
+            seen.add(m)
+    return deduped
+
+
+def _discover_claude_current_model() -> str | None:
+    installed, executable = _resolve_local_binary("claude-code")
+    if not installed or not executable:
+        return None
+
+    try:
+        completed = subprocess.run(
+            [executable, "--help"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+    except Exception as exc:
+        logger.debug("Claude model discovery failed: {}", exc)
+        return None
+
+    combined = (completed.stdout or "") + "\n" + (completed.stderr or "")
+    candidates = _extract_models_from_text(combined)
+    if candidates:
+        return candidates[0]
+    return None
+
+
+def _build_acp_config_options(agent_name: str) -> list[dict]:
+    model_map = {
+        "claude-code": [
+            "claude-sonnet-4-20250514",
+            "claude-opus-4-20250514",
+            "claude-haiku-4-20250514",
+        ],
+        "opencode": ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-20250514"],
+        "codex": ["o3", "o4-mini", "gpt-4.1"],
+    }
+
+    models = _discover_local_models(agent_name)
+    if not models:
+        models = model_map.get(agent_name, ["default-model"])
+
+    current = os.getenv("ACP_MODEL_NAME", "") or (models[0] if models else "")
+    if current and current not in models:
+        models = [current] + models
+
+    return [
+        {
+            "id": "model",
+            "name": "Model",
+            "category": "model",
+            "type": "select",
+            "currentValue": current,
+            "options": [
+                {
+                    "value": m,
+                    "name": m,
+                    "description": "Available model option",
+                }
+                for m in models
+            ],
+        }
+    ]
+
+
+async def _resolve_config_options(
+    request: Request,
+    agent_name: str,
+) -> list[dict]:
+    runtime = getattr(request.app.state, "acp_runtime", None)
+    if runtime is not None:
+        try:
+            options = await runtime.fetch_agent_config_options(agent_name)
+            if options:
+                logger.info(
+                    "Agent config options resolved via ACP session negotiation agent_name={} count={}",
+                    agent_name,
+                    len(options),
+                )
+                return options
+        except Exception as exc:
+            logger.warning(
+                "ACP config option negotiation failed for agent={} error={}",
+                agent_name,
+                exc,
+            )
+    options = _build_acp_config_options(agent_name)
+    logger.info(
+        "Agent config options resolved via local fallback agent_name={} count={}",
+        agent_name,
+        len(options),
+    )
+    return options
 
 
 @router.get("/", response_model=List[AgentConfigResponse])
@@ -123,21 +325,35 @@ def delete_agent(agent_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{agent_name}/models")
-def get_agent_models(agent_name: str, db: Session = Depends(get_db)):
+async def get_agent_models(
+    agent_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     agent = db.query(AgentConfig).filter(AgentConfig.agent_name == agent_name).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    model_map = {
-        "claude-code": [
-            "claude-sonnet-4-20250514",
-            "claude-opus-4-20250514",
-            "claude-haiku-4-20250514",
-        ],
-        "opencode": ["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-20250514"],
-        "codex": ["o3", "o4-mini", "gpt-4.1"],
+    config_options = await _resolve_config_options(request, agent_name)
+    model_option = next(
+        (o for o in config_options if o.get("category") == "model"), None
+    )
+    models = [
+        o.get("value")
+        for o in (model_option or {}).get("options", [])
+        if o.get("value")
+    ]
+    current_model = (model_option or {}).get("currentValue")
+    logger.info(
+        "Agent models resolved via ACP config options agent_name={} count={} current_model={}",
+        agent_name,
+        len(models),
+        current_model,
+    )
+    return {
+        "models": models,
+        "current_model": current_model,
+        "source": "acp_config_options",
     }
-    models = model_map.get(agent_name, ["default-model"])
-    return {"models": models}
 
 
 @router.get("/local/installed")
@@ -147,3 +363,29 @@ def list_local_installed_agents():
         installed, path = _resolve_local_binary(name)
         items.append({"agent_name": name, "installed": installed, "executable": path})
     return {"agents": items}
+
+
+@router.get("/local/current-model")
+def get_local_current_model(agent_name: str = "claude-code"):
+    config_options = _build_acp_config_options(agent_name)
+    model_option = next(
+        (o for o in config_options if o.get("category") == "model"), None
+    )
+    current_model = (model_option or {}).get("currentValue")
+    return {
+        "agent_name": agent_name,
+        "current_model": current_model,
+        "source": "acp_config_options",
+    }
+
+
+@router.get("/{agent_name}/acp-config-options")
+async def get_agent_acp_config_options(
+    agent_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    agent = db.query(AgentConfig).filter(AgentConfig.agent_name == agent_name).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return {"configOptions": await _resolve_config_options(request, agent_name)}

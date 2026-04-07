@@ -62,7 +62,9 @@ export const agents = {
   update: (id, data) => api.put(`/agents/${id}`, data),
   remove: (id) => api.delete(`/agents/${id}`),
   models: (name) => api.get(`/agents/${name}/models`),
+  acpConfigOptions: (name) => api.get(`/agents/${name}/acp-config-options`),
   localInstalled: () => api.get('/agents/local/installed'),
+  localCurrentModel: (agentName) => api.get('/agents/local/current-model', { params: { agent_name: agentName } }),
 }
 
 export const settings = {

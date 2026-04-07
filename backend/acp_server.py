@@ -10,19 +10,27 @@ from acp import (
     Agent,
     InitializeResponse,
     NewSessionResponse,
+    PROTOCOL_VERSION,
     PromptResponse,
     run_agent,
+    spawn_agent_process,
     text_block,
     update_agent_message,
 )
 from acp.interfaces import Client
 from acp.schema import (
+    AllowedOutcome,
     ClientCapabilities,
+    CreateTerminalResponse,
     HttpMcpServer,
     Implementation,
     McpServerStdio,
+    ReadTextFileResponse,
+    RequestPermissionResponse,
     SseMcpServer,
+    TerminalOutputResponse,
     TextContentBlock,
+    WaitForTerminalExitResponse,
 )
 
 from database import SessionLocal
@@ -71,6 +79,12 @@ def _resolve_agent_executable(agent_name: str) -> str:
     if agent_name == "opencode":
         return os.getenv("OPENCODE_EXECUTABLE", "opencode")
     return agent_name
+
+
+def _resolve_agent_acp_args(agent_name: str) -> list[str]:
+    specific_key = f"{agent_name.upper().replace('-', '_')}_ACP_ARGS"
+    raw = os.getenv(specific_key, "").strip() or os.getenv("ACP_AGENT_ARGS", "").strip()
+    return shlex.split(raw) if raw else []
 
 
 def _build_agent_prompt(content: str, memory_info: dict[str, Any]) -> str:
@@ -184,6 +198,209 @@ class ACPToolingService:
             db.close()
 
 
+class _ACPBridgeClient:
+    def __init__(self) -> None:
+        self._conn: Client | None = None
+        self._agent_messages: list[str] = []
+        self._config_options: list[dict[str, Any]] = []
+
+    def on_connect(self, conn: Client) -> None:
+        self._conn = conn
+
+    @property
+    def config_options(self) -> list[dict[str, Any]]:
+        return list(self._config_options)
+
+    def reset_messages(self) -> None:
+        self._agent_messages = []
+
+    def joined_messages(self) -> str:
+        return "\n".join(part for part in self._agent_messages if part).strip()
+
+    async def request_permission(
+        self, options, session_id: str, tool_call, **kwargs: Any
+    ):
+        chosen = options[0].option_id if options else "allow_once"
+        return RequestPermissionResponse(
+            outcome=AllowedOutcome(outcome="selected", option_id=chosen)
+        )
+
+    async def session_update(self, session_id: str, update, **kwargs: Any) -> None:
+        kind = getattr(update, "session_update", None)
+        if kind == "agent_message_chunk":
+            content = getattr(update, "content", None)
+            text = getattr(content, "text", "") if content else ""
+            if text:
+                self._agent_messages.append(text)
+            return
+
+        if kind == "config_option_update":
+            options = getattr(update, "config_options", None) or []
+            self._config_options = [
+                o.model_dump(by_alias=True, exclude_none=True) for o in options
+            ]
+
+    async def write_text_file(
+        self, content: str, path: str, session_id: str, **kwargs: Any
+    ):
+        return None
+
+    async def read_text_file(
+        self,
+        path: str,
+        session_id: str,
+        limit: int | None = None,
+        line: int | None = None,
+        **kwargs: Any,
+    ):
+        return ReadTextFileResponse(content="")
+
+    async def create_terminal(
+        self,
+        command: str,
+        session_id: str,
+        args: list[str] | None = None,
+        cwd: str | None = None,
+        env: list[Any] | None = None,
+        output_byte_limit: int | None = None,
+        **kwargs: Any,
+    ):
+        return CreateTerminalResponse(terminal_id="unsupported")
+
+    async def terminal_output(self, session_id: str, terminal_id: str, **kwargs: Any):
+        return TerminalOutputResponse(output="", truncated=False)
+
+    async def release_terminal(self, session_id: str, terminal_id: str, **kwargs: Any):
+        return None
+
+    async def wait_for_terminal_exit(
+        self, session_id: str, terminal_id: str, **kwargs: Any
+    ):
+        return WaitForTerminalExitResponse(exit_code=0)
+
+    async def kill_terminal(self, session_id: str, terminal_id: str, **kwargs: Any):
+        return None
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        return {"ok": False, "error": f"Unsupported client ext method: {method}"}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        return None
+
+
+class ACPClientBridge:
+    async def negotiate(
+        self,
+        agent_name: str,
+        preferred_model: str | None = None,
+        prompt_text: str | None = None,
+    ) -> dict[str, Any]:
+        executable = _resolve_agent_executable(agent_name)
+        args = _resolve_agent_acp_args(agent_name)
+        client = _ACPBridgeClient()
+
+        async with spawn_agent_process(client, executable, *args) as (conn, process):
+            await conn.initialize(
+                protocol_version=PROTOCOL_VERSION,
+                client_capabilities=ClientCapabilities(),
+                client_info=Implementation(
+                    name="ssh-agent-commander-client",
+                    title="SSH Agent Commander Client",
+                    version="0.1.0",
+                ),
+            )
+
+            session = await conn.new_session(cwd=os.getcwd(), mcp_servers=[])
+            session_id = session.session_id
+
+            config_options = [
+                o.model_dump(by_alias=True, exclude_none=True)
+                for o in (session.config_options or [])
+            ]
+
+            if (not config_options) and getattr(session, "models", None):
+                model_state = session.models
+                available = [
+                    {
+                        "value": m.model_id,
+                        "name": m.name,
+                        "description": m.description,
+                    }
+                    for m in (model_state.available_models or [])
+                ]
+                config_options = [
+                    {
+                        "id": "model",
+                        "name": "Model",
+                        "category": "model",
+                        "type": "select",
+                        "currentValue": model_state.current_model_id,
+                        "options": available,
+                    }
+                ]
+
+            target_model = preferred_model or os.getenv("ACP_MODEL_NAME", "")
+            if target_model:
+                model_option = next(
+                    (
+                        opt
+                        for opt in config_options
+                        if opt.get("category") == "model" or opt.get("id") == "model"
+                    ),
+                    None,
+                )
+
+                if model_option and model_option.get("id"):
+                    try:
+                        set_result = await conn.set_config_option(
+                            config_id=str(model_option.get("id")),
+                            session_id=session_id,
+                            value=target_model,
+                        )
+                        config_options = [
+                            o.model_dump(by_alias=True, exclude_none=True)
+                            for o in (set_result.config_options or [])
+                        ]
+                    except Exception:
+                        logger.debug(
+                            "ACP set_config_option failed agent={} config_id={} model={}",
+                            agent_name,
+                            model_option.get("id"),
+                            target_model,
+                        )
+                else:
+                    try:
+                        await conn.set_session_model(
+                            model_id=target_model,
+                            session_id=session_id,
+                        )
+                    except Exception:
+                        logger.debug(
+                            "ACP set_session_model failed agent={} model={}",
+                            agent_name,
+                            target_model,
+                        )
+
+            response_text = ""
+            if prompt_text:
+                client.reset_messages()
+                await conn.prompt(
+                    prompt=[text_block(prompt_text)], session_id=session_id
+                )
+                response_text = client.joined_messages()
+
+            try:
+                await conn.close_session(session_id=session_id)
+            except Exception:
+                pass
+
+            return {
+                "session_id": session_id,
+                "config_options": client.config_options or config_options,
+                "response_text": response_text,
+            }
+
+
 class SSHAgentCommanderAgent(Agent):
     _conn: Client
 
@@ -281,6 +498,7 @@ class ACPServerRuntime:
         self._failure_reason: str | None = None
         self._mode = "http-bridge"
         self._tooling = ACPToolingService()
+        self._acp_client_bridge = ACPClientBridge()
 
     async def _agent_generate_response(
         self,
@@ -430,6 +648,55 @@ class ACPServerRuntime:
             )
 
             prompt_text = _build_agent_prompt(content, memory_info)
+
+            if _truthy(os.getenv("ACP_CLIENT_ENABLED", "false")):
+                try:
+                    await emit(
+                        "thinking",
+                        {
+                            "message": "Negotiating ACP session",
+                            "agent": active_agent.agent_name,
+                            "model": selected_model,
+                        },
+                    )
+                    bridge_result = await self._acp_client_bridge.negotiate(
+                        agent_name=active_agent.agent_name,
+                        preferred_model=selected_model,
+                        prompt_text=prompt_text,
+                    )
+                    bridge_response = (bridge_result.get("response_text") or "").strip()
+                    if bridge_response:
+                        await emit("completed", {"message": "ACP response received"})
+                        logger.info(
+                            "ACP client prompt succeeded session_id={} server_id={} agent={} model={}",
+                            session_id,
+                            server_id,
+                            active_agent.agent_name,
+                            selected_model,
+                        )
+                        return bridge_response
+                    logger.warning(
+                        "ACP client prompt completed with empty response session_id={} server_id={} agent={}",
+                        session_id,
+                        server_id,
+                        active_agent.agent_name,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "ACP client negotiation failed; falling back to local command mode agent={} error={}",
+                        active_agent.agent_name,
+                        exc,
+                    )
+                    if debug_enabled:
+                        await emit(
+                            "debug",
+                            {
+                                "phase": "acp_client_fallback",
+                                "agent": active_agent.agent_name,
+                                "error": str(exc),
+                            },
+                        )
+
             started = time.perf_counter()
             (
                 stdout_text,
@@ -587,9 +854,24 @@ class ACPServerRuntime:
             "failure_reason": self._failure_reason,
             "port": self.port,
             "mode": self._mode,
+            "acp_client_enabled": _truthy(os.getenv("ACP_CLIENT_ENABLED", "false")),
             "current_model": os.getenv("ACP_MODEL_NAME", ""),
             "tools": [t["name"] for t in get_tool_definitions()],
         }
+
+    async def fetch_agent_config_options(
+        self,
+        agent_name: str,
+        preferred_model: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not _truthy(os.getenv("ACP_CLIENT_ENABLED", "false")):
+            return []
+        result = await self._acp_client_bridge.negotiate(
+            agent_name=agent_name,
+            preferred_model=preferred_model,
+            prompt_text=None,
+        )
+        return result.get("config_options") or []
 
     async def invoke_tool(
         self,

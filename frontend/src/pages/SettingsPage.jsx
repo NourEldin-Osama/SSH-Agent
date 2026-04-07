@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { agents, permissions } from '../lib/api'
 import { usePermissionStore } from '../store/usePermissionStore'
 import { useServerStore } from '../store/useServerStore'
-import { Plus, Trash2, Edit, Save, X, Bot, ShieldAlert, Globe, Server as ServerIcon, KeyRound } from 'lucide-react'
+import { Plus, Trash2, Edit, Save, X, Bot, ShieldAlert, Globe, Server as ServerIcon } from 'lucide-react'
 import { AppHeader } from '../components/layout/AppHeader'
 
 export function Settings() {
@@ -21,7 +21,7 @@ function AgentConfigs() {
   const [agentList, setAgentList] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ agent_name: '', api_key: '', base_url: '', is_active: true })
+  const [form, setForm] = useState({ agent_name: '', is_active: true })
   const [localInstalled, setLocalInstalled] = useState({})
 
   useEffect(() => {
@@ -46,12 +46,12 @@ function AgentConfigs() {
     setAgentList(data)
     setShowForm(false)
     setEditing(null)
-    setForm({ agent_name: '', api_key: '', base_url: '', is_active: true })
+    setForm({ agent_name: '', is_active: true })
   }
 
   const handleEdit = (agent) => {
     setEditing(agent)
-    setForm({ agent_name: agent.agent_name, api_key: '', base_url: agent.base_url || '', is_active: agent.is_active })
+    setForm({ agent_name: agent.agent_name, is_active: agent.is_active })
     setShowForm(true)
   }
 
@@ -68,7 +68,7 @@ function AgentConfigs() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-cyan-300" />Agent Configurations</h2>
         <button
-          onClick={() => { setShowForm(true); setEditing(null); setForm({ agent_name: '', api_key: '', base_url: '', is_active: true }) }}
+          onClick={() => { setShowForm(true); setEditing(null); setForm({ agent_name: '', is_active: true }) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium"
         >
           <Plus className="w-4 h-4" />
@@ -93,30 +93,17 @@ function AgentConfigs() {
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-400 mb-1">API Key</label>
-              <input
-                type="password"
-                value={form.api_key}
-                onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                className="w-full bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-                required={!editing && !localInstalled[form.agent_name]?.installed}
-                placeholder={editing ? 'Leave blank to keep current' : ''}
-              />
-              {localInstalled[form.agent_name]?.installed && (
-                <p className="text-[11px] text-green-400 mt-1">
-                  Local executable detected: {localInstalled[form.agent_name]?.executable}. API key optional.
-                </p>
-              )}
+              <label className="block text-xs text-gray-400 mb-1">Local Status</label>
+              <div className="w-full bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300">
+                {form.agent_name && localInstalled[form.agent_name]?.installed
+                  ? `Installed (${localInstalled[form.agent_name]?.executable})`
+                  : form.agent_name
+                  ? 'Not detected in PATH'
+                  : 'Select an agent'}
+              </div>
             </div>
           </div>
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={form.base_url}
-              onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-              placeholder="Base URL (optional)"
-              className="flex-1 bg-[#0f1117] border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-            />
             <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1">
               <Save className="w-4 h-4" />
               {editing ? 'Update' : 'Save'}
@@ -132,7 +119,6 @@ function AgentConfigs() {
           <div key={agent.id} className="bg-[#1a1d27] border border-gray-800 rounded-lg px-4 py-3 flex items-center justify-between">
             <div>
               <span className="text-white font-medium text-sm">{agent.agent_name}</span>
-              {agent.base_url && <span className="text-xs text-gray-500 ml-2">{agent.base_url}</span>}
               <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${agent.is_active ? 'bg-green-900/50 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
                 {agent.is_active ? 'Active' : 'Inactive'}
               </span>

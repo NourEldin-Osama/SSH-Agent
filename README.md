@@ -60,6 +60,14 @@ uv run --project backend uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir b
   - `ACP_MODEL_NAME=<model>`
   - Active agent must have `base_url` configured (OpenAI-compatible chat completions endpoint).
 
+### ACP Client Negotiation
+
+- Set `ACP_CLIENT_ENABLED=true` to enable real ACP client-side session negotiation against local agent executables.
+- Optional args for ACP invocation:
+  - global: `ACP_AGENT_ARGS="..."`
+  - per-agent override: `<AGENT_NAME>_ACP_ARGS`, e.g. `CLAUDE_CODE_ACP_ARGS="..."`
+- When enabled, `/api/agents/{name}/acp-config-options` and `/api/agents/{name}/models` use ACP `session/new` config options first, then fall back to local discovery defaults.
+
 ### Debug Mode
 
 - Enable Debug in workspace navbar to stream internal agent progress events.
