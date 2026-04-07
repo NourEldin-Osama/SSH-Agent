@@ -76,9 +76,16 @@ uv run --project backend uvicorn main:app --host 0.0.0.0 --port 8000 --app-dir b
 ## Agent Configuration
 
 1. Open `Settings`.
-2. Add an agent configuration (name, API key, optional base URL).
+2. Add an agent configuration (name, local agents do not require API key/base URL).
 3. Keep at least one active agent for live agent-response mode.
 4. If no agent is configured, chat falls back to a clear system response.
+
+For local CLI agents:
+
+- `claude-code` uses `CLAUDE_CODE_EXECUTABLE` (default: `claude`)
+- `opencode` uses `OPENCODE_EXECUTABLE` (default: `opencode`)
+
+If the executable is available in PATH, API key/base URL are not required.
 
 ## Notes
 

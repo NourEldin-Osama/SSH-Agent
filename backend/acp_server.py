@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import re
+import shlex
+import time
 from typing import Any, Awaitable, Callable
 
 from acp import (
@@ -24,7 +26,6 @@ from acp.schema import (
 )
 
 from database import SessionLocal
-from encryption import decrypt_value
 from mcp_tools import (
     ToolContext,
     execute_command_tool,
@@ -54,11 +55,55 @@ def _is_debug_enabled() -> bool:
 
 
 def _resolve_model(preferred_model: str | None) -> str:
-    return preferred_model or os.getenv("ACP_MODEL_NAME", "gpt-4o-mini")
+    return preferred_model or os.getenv("ACP_MODEL_NAME", "")
 
 
 def _resolve_provider_kind(base_url: str | None) -> str:
-    return "openai-compatible" if base_url else "local-agent"
+    return "local-agent"
+
+
+def _resolve_agent_executable(agent_name: str) -> str:
+    env_key = f"{agent_name.upper().replace('-', '_')}_EXECUTABLE"
+    if env_key in os.environ and os.environ[env_key].strip():
+        return os.environ[env_key].strip()
+    if agent_name == "claude-code":
+        return os.getenv("CLAUDE_CODE_EXECUTABLE", "claude")
+    if agent_name == "opencode":
+        return os.getenv("OPENCODE_EXECUTABLE", "opencode")
+    return agent_name
+
+
+def _build_agent_prompt(content: str, memory_info: dict[str, Any]) -> str:
+    return (
+        "You are SSH Agent Commander assistant. "
+        "Server connection details are already configured internally. "
+        "Never ask for host, username, or port. "
+        "When execution is needed, use execute_command MCP tool.\n\n"
+        f"User request: {content}\n"
+        f"Memory context: {json.dumps(memory_info, ensure_ascii=True)}\n"
+        "If command execution is needed, explicitly state the command intent."
+    )
+
+
+async def _run_local_agent_command(
+    agent_name: str,
+    model: str,
+    prompt: str,
+) -> tuple[str, str, int, list[str]]:
+    executable = _resolve_agent_executable(agent_name)
+    cmd = [executable, "-p", prompt]
+    if model:
+        cmd.extend(["--model", model])
+
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_bytes, stderr_bytes = await process.communicate()
+    stdout = stdout_bytes.decode("utf-8", errors="replace")
+    stderr = stderr_bytes.decode("utf-8", errors="replace")
+    return stdout, stderr, int(process.returncode or 0), cmd
 
 
 def _infer_mcp_command(user_text: str) -> str | None:
@@ -375,167 +420,62 @@ class ACPServerRuntime:
                     },
                 )
 
-            if active_agent.base_url and _truthy(
-                os.getenv("ACP_REAL_MODEL_ENABLED", "false")
-            ):
-                try:
-                    import httpx
+            await emit(
+                "thinking",
+                {
+                    "message": "Running local agent executable",
+                    "agent": active_agent.agent_name,
+                    "model": selected_model,
+                },
+            )
 
-                    await emit(
-                        "thinking",
-                        {
-                            "message": "Calling model provider",
-                            "provider": active_agent.base_url,
-                            "model": selected_model,
-                        },
-                    )
+            prompt_text = _build_agent_prompt(content, memory_info)
+            started = time.perf_counter()
+            (
+                stdout_text,
+                stderr_text,
+                return_code,
+                command_parts,
+            ) = await _run_local_agent_command(
+                active_agent.agent_name,
+                selected_model,
+                prompt_text,
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-                    api_key = decrypt_value(active_agent.encrypted_api_key)
-                    payload = {
-                        "model": selected_model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "You are SSH Agent Commander assistant. "
-                                    "Server connection details are already configured internally. "
-                                    "Never ask for host, username, port, or raw ssh command usage. "
-                                    "When execution is needed, use the execute_command MCP tool."
-                                ),
-                            },
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"User: {content}\n"
-                                    f"Memory: {memory_info}\n"
-                                    "Respond with concise operational guidance. "
-                                    "If a command is needed, use execute_command MCP tool."
-                                ),
-                            },
-                        ],
-                    }
-                    headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": os.getenv(
-                            "OPENROUTER_SITE_URL", "http://localhost:5173"
-                        ),
-                        "X-Title": os.getenv(
-                            "OPENROUTER_APP_NAME", "SSH Agent Commander"
-                        ),
-                    }
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        resp = await client.post(
-                            active_agent.base_url,
-                            json=payload,
-                            headers=headers,
-                        )
-                    if debug_enabled:
-                        await emit(
-                            "debug",
-                            {
-                                "phase": "provider_request",
-                                "agent": active_agent.agent_name,
-                                "provider": active_agent.base_url,
-                                "model": payload["model"],
-                                "request_command": (
-                                    f"POST {active_agent.base_url} "
-                                    f"model={payload['model']} messages=[system,user]"
-                                ),
-                                "response_status": resp.status_code,
-                            },
-                        )
-                    if resp.status_code < 400:
-                        body = resp.json()
-                        choices = body.get("choices") or []
-                        if choices:
-                            msg = choices[0].get("message") or {}
-                            text = msg.get("content")
-                            if text:
-                                inferred = _infer_mcp_command(content)
-                                if inferred:
-                                    if debug_enabled:
-                                        await emit(
-                                            "debug",
-                                            {
-                                                "phase": "mcp_inference",
-                                                "inferred_command": inferred,
-                                                "reason": "matched_user_intent",
-                                            },
-                                        )
-                                    await emit(
-                                        "thinking",
-                                        {
-                                            "message": "Auto-running MCP execute_command based on request",
-                                            "command": inferred,
-                                        },
-                                    )
-                                    exec_result = await call_tool(
-                                        "execute_command",
-                                        {
-                                            "title": "Auto MCP command",
-                                            "description": "Auto-detected user intent",
-                                            "command": inferred,
-                                            "expected_output": "Command output",
-                                            "is_risky": False,
-                                        },
-                                        debug_enabled=debug_enabled,
-                                    )
-                                    await emit(
-                                        "tool_call",
-                                        {
-                                            "tool": "execute_command",
-                                            "result": exec_result,
-                                        },
-                                    )
-                                await emit(
-                                    "completed", {"message": "Model response received"}
-                                )
-                                logger.info(
-                                    "Agent model response received session_id={} server_id={} model={}",
-                                    session_id,
-                                    server_id,
-                                    payload["model"],
-                                )
-                                if debug_enabled:
-                                    await emit(
-                                        "debug",
-                                        {
-                                            "phase": "agent_request_end",
-                                            "outcome": "model_response",
-                                        },
-                                    )
-                                return text
-                    body_text = resp.text[:1000]
-                    logger.error(
-                        "Provider error session_id={} server_id={} status={} body={}",
-                        session_id,
-                        server_id,
-                        resp.status_code,
-                        body_text,
-                    )
-                    await emit(
-                        "error",
-                        {
-                            "message": "Provider returned error response",
-                            "status_code": resp.status_code,
-                            "body": body_text,
-                        },
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Real model path failed; using local ACP tool synthesis: {}",
-                        exc,
-                    )
-                    await emit("error", {"message": str(exc)})
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "local_agent_exec",
+                        "command": " ".join(shlex.quote(p) for p in command_parts),
+                        "return_code": return_code,
+                        "elapsed_ms": elapsed_ms,
+                        "stdout_preview": stdout_text[:1000],
+                        "stderr_preview": stderr_text[:1000],
+                    },
+                )
 
-            await emit("completed", {"message": "Using fallback response path"})
-            logger.warning(
-                "Using fallback response path session_id={} server_id={} agent={}",
+            logger.info(
+                "Local agent execution finished session_id={} server_id={} agent={} model={} rc={} elapsed_ms={}",
                 session_id,
                 server_id,
                 active_agent.agent_name,
+                selected_model,
+                return_code,
+                elapsed_ms,
             )
+
+            if return_code != 0:
+                await emit(
+                    "error",
+                    {
+                        "message": "Local agent command failed",
+                        "return_code": return_code,
+                        "stderr": stderr_text[:2000],
+                    },
+                )
+
             inferred = _infer_mcp_command(content)
             if inferred:
                 if debug_enabled:
@@ -572,18 +512,18 @@ class ACPServerRuntime:
                         "result": exec_result,
                     },
                 )
-            result_text = (
-                f"[{active_agent.agent_name}] Received: {content}\n"
-                f"Memory context: {memory_info}\n"
-                "Use execute_command MCP tool to run needed commands. "
-                "Do not request host/username/port from user."
-            )
+            result_text = (stdout_text or stderr_text or "").strip()
+            if not result_text:
+                result_text = "No response from local agent executable."
+
+            await emit("completed", {"message": "Local agent response received"})
             if debug_enabled:
                 await emit(
                     "debug",
                     {
                         "phase": "agent_request_end",
-                        "outcome": "fallback_response",
+                        "outcome": "local_agent_response",
+                        "return_code": return_code,
                     },
                 )
             return result_text
@@ -647,6 +587,7 @@ class ACPServerRuntime:
             "failure_reason": self._failure_reason,
             "port": self.port,
             "mode": self._mode,
+            "current_model": os.getenv("ACP_MODEL_NAME", ""),
             "tools": [t["name"] for t in get_tool_definitions()],
         }
 

@@ -80,6 +80,7 @@ def get_acp_status():
             "failed": True,
             "failure_reason": "ACP runtime not initialized",
             "port": int(os.getenv("ACP_SERVER_PORT", "8001")),
+            "current_model": os.getenv("ACP_MODEL_NAME", ""),
             "tools": [],
         }
     return runtime.status_payload()

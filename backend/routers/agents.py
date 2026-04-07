@@ -53,9 +53,20 @@ def create_agent(agent: AgentConfigCreate, db: Session = Depends(get_db)):
             detail="API key is required for non-local agent configurations",
         )
 
+    encrypted_key = None
+    if agent.api_key:
+        encrypted_key = encrypt_value(agent.api_key)
+    elif is_local:
+        encrypted_key = encrypt_value("local-agent-no-key")
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="API key is required for non-local agent configurations",
+        )
+
     db_agent = AgentConfig(
         agent_name=agent.agent_name,
-        encrypted_api_key=encrypt_value(agent.api_key or "local-agent-no-key"),
+        encrypted_api_key=encrypted_key,
         base_url=agent.base_url,
         is_active=agent.is_active,
     )
@@ -83,6 +94,9 @@ def update_agent(
     update_data = agent_update.model_dump(exclude_unset=True)
     if "api_key" in update_data and update_data["api_key"] is not None:
         agent.encrypted_api_key = encrypt_value(update_data.pop("api_key"))
+    if "base_url" in update_data and update_data["base_url"] is not None:
+        if agent.agent_name in {"claude-code", "opencode"}:
+            update_data["base_url"] = None
     for field, value in update_data.items():
         setattr(agent, field, value)
     db.commit()

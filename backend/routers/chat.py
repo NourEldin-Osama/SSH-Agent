@@ -137,6 +137,13 @@ async def send_message(
         .first()
     )
     if active_agent:
+        logger.info(
+            "Chat message received session_id={} agent_name={} requested_model={} content_length={}",
+            session_id,
+            message.agent_name,
+            message.model,
+            len(message.content or ""),
+        )
         runtime_content = await _invoke_agent_runtime(
             request,
             session_id=session_id,
