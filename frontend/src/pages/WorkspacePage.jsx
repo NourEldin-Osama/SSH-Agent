@@ -97,6 +97,7 @@ export function Workspace() {
         appendMessage(data.data)
         break
       case 'agent_progress': {
+        if (!debugMode) break
         const stage = data.data?.stage || 'thinking'
         const details = data.data?.details || {}
         const content = stage === 'tool_call'

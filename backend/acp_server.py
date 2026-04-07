@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import Any, Awaitable, Callable
 
 from acp import (
@@ -59,6 +60,14 @@ def _infer_mcp_command(user_text: str) -> str | None:
     if not lowered:
         return None
 
+    direct_match = re.search(r"\b(?:run|execute)\s+(.+)$", lowered)
+    if direct_match:
+        candidate = direct_match.group(1).strip()
+        if candidate.startswith("command "):
+            candidate = candidate[len("command ") :].strip()
+        if candidate:
+            return candidate
+
     if "list" in lowered and (
         "folder" in lowered
         or "directory" in lowered
@@ -78,6 +87,8 @@ def _infer_mcp_command(user_text: str) -> str | None:
         return "whoami"
     if "use mcp" in lowered or "execute_command" in lowered:
         return "ls -la"
+    if lowered == "ls" or lowered.startswith("ls "):
+        return lowered
     return None
 
 
@@ -232,9 +243,59 @@ class ACPServerRuntime:
             if progress_cb is not None:
                 await progress_cb(stage, details)
 
+        async def call_tool(
+            tool_name: str,
+            args: dict[str, Any] | None = None,
+            *,
+            debug_enabled: bool,
+        ) -> dict[str, Any]:
+            payload = args or {}
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "tool_call_start",
+                        "tool": tool_name,
+                        "arguments": payload,
+                    },
+                )
+            result = await self._tooling.invoke(
+                tool_name=tool_name,
+                session_id=session_id,
+                server_id=server_id,
+                arguments=payload,
+            )
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "tool_call_end",
+                        "tool": tool_name,
+                        "result": result,
+                    },
+                )
+            return result
+
         db = SessionLocal()
         try:
             from models import AgentConfig  # local import to avoid cycles
+
+            debug_enabled = _is_debug_enabled()
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "agent_request_start",
+                        "session_id": session_id,
+                        "server_id": server_id,
+                        "user_input": content,
+                        "runtime_mode": self._mode,
+                        "acp_real_model_enabled": _truthy(
+                            os.getenv("ACP_REAL_MODEL_ENABLED", "false")
+                        ),
+                        "model": os.getenv("ACP_MODEL_NAME", "gpt-4o-mini"),
+                    },
+                )
 
             active_agent = (
                 db.query(AgentConfig)
@@ -243,26 +304,32 @@ class ACPServerRuntime:
                 .first()
             )
             if active_agent is None:
+                if debug_enabled:
+                    await emit(
+                        "debug",
+                        {
+                            "phase": "agent_request_end",
+                            "outcome": "no_active_agent",
+                        },
+                    )
                 return "No active agent configured."
 
             await emit("thinking", {"message": "Reading server context"})
 
-            server_info = await self._tooling.invoke(
-                tool_name="get_current_server_info",
-                session_id=session_id,
-                server_id=server_id,
-                arguments={},
+            server_info = await call_tool(
+                "get_current_server_info",
+                {},
+                debug_enabled=debug_enabled,
             )
             await emit(
                 "tool_call", {"tool": "get_current_server_info", "result": server_info}
             )
 
             await emit("thinking", {"message": "Reading server memory"})
-            memory_info = await self._tooling.invoke(
-                tool_name="read_server_memory",
-                session_id=session_id,
-                server_id=server_id,
-                arguments={},
+            memory_info = await call_tool(
+                "read_server_memory",
+                {},
+                debug_enabled=debug_enabled,
             )
             await emit(
                 "tool_call", {"tool": "read_server_memory", "result": memory_info}
@@ -274,7 +341,6 @@ class ACPServerRuntime:
                 try:
                     import httpx
 
-                    debug_enabled = _is_debug_enabled()
                     await emit(
                         "thinking",
                         {
@@ -323,6 +389,7 @@ class ACPServerRuntime:
                         await emit(
                             "debug",
                             {
+                                "phase": "provider_request",
                                 "agent": active_agent.agent_name,
                                 "provider": active_agent.base_url,
                                 "model": payload["model"],
@@ -342,6 +409,15 @@ class ACPServerRuntime:
                             if text:
                                 inferred = _infer_mcp_command(content)
                                 if inferred:
+                                    if debug_enabled:
+                                        await emit(
+                                            "debug",
+                                            {
+                                                "phase": "mcp_inference",
+                                                "inferred_command": inferred,
+                                                "reason": "matched_user_intent",
+                                            },
+                                        )
                                     await emit(
                                         "thinking",
                                         {
@@ -349,17 +425,16 @@ class ACPServerRuntime:
                                             "command": inferred,
                                         },
                                     )
-                                    exec_result = await self._tooling.invoke(
-                                        tool_name="execute_command",
-                                        session_id=session_id,
-                                        server_id=server_id,
-                                        arguments={
+                                    exec_result = await call_tool(
+                                        "execute_command",
+                                        {
                                             "title": "Auto MCP command",
                                             "description": "Auto-detected user intent",
                                             "command": inferred,
                                             "expected_output": "Command output",
                                             "is_risky": False,
                                         },
+                                        debug_enabled=debug_enabled,
                                     )
                                     await emit(
                                         "tool_call",
@@ -371,6 +446,14 @@ class ACPServerRuntime:
                                 await emit(
                                     "completed", {"message": "Model response received"}
                                 )
+                                if debug_enabled:
+                                    await emit(
+                                        "debug",
+                                        {
+                                            "phase": "agent_request_end",
+                                            "outcome": "model_response",
+                                        },
+                                    )
                                 return text
                     body_text = resp.text[:1000]
                     await emit(
@@ -391,6 +474,15 @@ class ACPServerRuntime:
             await emit("completed", {"message": "Using fallback response path"})
             inferred = _infer_mcp_command(content)
             if inferred:
+                if debug_enabled:
+                    await emit(
+                        "debug",
+                        {
+                            "phase": "mcp_inference",
+                            "inferred_command": inferred,
+                            "reason": "fallback_path",
+                        },
+                    )
                 await emit(
                     "thinking",
                     {
@@ -398,17 +490,16 @@ class ACPServerRuntime:
                         "command": inferred,
                     },
                 )
-                exec_result = await self._tooling.invoke(
-                    tool_name="execute_command",
-                    session_id=session_id,
-                    server_id=server_id,
-                    arguments={
+                exec_result = await call_tool(
+                    "execute_command",
+                    {
                         "title": "Auto MCP command",
                         "description": "Fallback auto-detected user intent",
                         "command": inferred,
                         "expected_output": "Command output",
                         "is_risky": False,
                     },
+                    debug_enabled=debug_enabled,
                 )
                 await emit(
                     "tool_call",
@@ -417,12 +508,21 @@ class ACPServerRuntime:
                         "result": exec_result,
                     },
                 )
-            return (
+            result_text = (
                 f"[{active_agent.agent_name}] Received: {content}\n"
                 f"Server context: {server_info}\n"
                 f"Memory context: {memory_info}\n"
                 "Use execute_command MCP tool to propose actionable steps."
             )
+            if debug_enabled:
+                await emit(
+                    "debug",
+                    {
+                        "phase": "agent_request_end",
+                        "outcome": "fallback_response",
+                    },
+                )
+            return result_text
         finally:
             db.close()
 
